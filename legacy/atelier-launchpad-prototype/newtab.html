@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Launchpad</title>
+  <!-- Sets data-resolved-theme before first paint (MV3 forbids inline scripts). -->
+  <script src="theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Zen+Kaku+Gothic+New:wght@300;400&display=swap">
+  <link rel="stylesheet" href="newtab.css">
+</head>
+<body>
+  <!-- Backdrop: static radial placeholder, the ether canvas over it, then the
+       same top/bottom glass fade the portfolio Header uses, then grain. -->
+  <div class="backdrop" aria-hidden="true">
+    <canvas id="ether"></canvas>
+    <div class="veil"></div>
+    <div class="grain"></div>
+  </div>
+
+  <nav class="topbar">
+    <a class="brand" href="#" aria-label="Launchpad">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="brand-name">Launchpad</span>
+      <span class="brand-jp" lang="ja">ランチパッド</span>
+    </a>
+    <button id="theme" class="icon-btn" type="button" aria-label="Theme: system" title="Theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" class="fill"/></svg>
+    </button>
+  </nav>
+
+  <main class="shell">
+    <header class="hero">
+      <span class="eyebrow reveal" id="eyebrow"></span>
+      <h1 class="clock reveal" id="clock" style="--d:80"></h1>
+      <p class="hero-sub reveal" style="--d:180"><span lang="ja" class="jp" id="greeting-jp"></span><span class="dot" aria-hidden="true">·</span><span id="greeting"></span></p>
+      <span class="rule reveal" style="--d:260" aria-hidden="true"></span>
+    </header>
+
+    <section class="search reveal" style="--d:320" role="search">
+      <div class="search-field">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="text" autocomplete="off" spellcheck="false"
+          placeholder="Search sites, bookmarks, history — or the web"
+          aria-label="Search sites, bookmarks, history or the web"
+          role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list">
+        <kbd class="search-kbd">/</kbd>
+      </div>
+      <div id="results" class="results" role="listbox" aria-label="Search results" hidden></div>
+    </section>
+
+    <section class="section" aria-labelledby="h-top">
+      <div class="section-head">
+        <h2 id="h-top"><span class="num">02</span>Most used</h2>
+        <p class="meta" id="meta"></p>
+      </div>
+      <div id="bento" class="bento"></div>
+      <p id="empty" class="empty" hidden>No browsing history yet — the sites you visit will rank themselves here.</p>
+    </section>
+
+    <section class="section" id="dock-section" aria-labelledby="h-dock">
+      <div class="section-head">
+        <h2 id="h-dock"><span class="num">03</span>Everyday</h2>
+      </div>
+      <ol id="dock" class="dock"></ol>
+    </section>
+
+    <footer class="foot">
+      <span><kbd>/</kbd> search</span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+      <span><kbd>↵</kbd> open</span>
+      <span><kbd>Ctrl</kbd><kbd>↵</kbd> background</span>
+      <span><kbd>Alt</kbd><kbd>1–9</kbd> jump</span>
+      <button id="reset" class="linkish" type="button" hidden></button>
+    </footer>
+  </main>
+
+  <script src="ether.js" defer></script>
+  <script src="newtab.js" defer></script>
+</body>
+</html>

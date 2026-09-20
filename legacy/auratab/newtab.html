@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title data-i18n="pageTitle">New Tab</title>
+  <link rel="icon" href="icons/icon-32.png">
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/newtab.css">
+  <script type="module" src="js/newtab.js"></script>
+</head>
+<body>
+  <div class="aura" aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow" id="greeting"></p>
+        <h1 class="page-title" id="time"></h1>
+        <p class="locale" id="date"></p>
+      </div>
+      <button class="icon-btn" id="open-settings" type="button" data-i18n-label="settings">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <div class="filter-bar" role="search">
+      <div class="search">
+        <svg class="ico search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="searchPlaceholder" data-i18n-label="searchPlaceholder">
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
+      </div>
+      <span class="filter-count" id="filter-count" aria-live="polite" hidden></span>
+    </div>
+
+    <div class="content">
+      <section class="section" id="top-sites" aria-labelledby="top-sites-title" hidden>
+        <h2 class="section-heading" id="top-sites-title" data-i18n="mostVisited"></h2>
+        <p class="section-subtitle" data-i18n="mostVisitedSubtitle"></p>
+        <ul class="site-grid" id="site-grid"></ul>
+        <p class="empty" id="top-sites-empty" data-i18n="emptyTopSites" hidden></p>
+      </section>
+
+      <section class="section" id="bookmarks" aria-labelledby="bookmarks-title" hidden>
+        <h2 class="section-heading" id="bookmarks-title" data-i18n="bookmarks"></h2>
+        <p class="section-subtitle" data-i18n="bookmarksSubtitle"></p>
+        <div class="groups" id="groups"></div>
+        <p class="empty" id="bookmarks-empty" data-i18n="emptyBookmarks" hidden></p>
+      </section>
+
+      <div class="no-results" id="no-results" hidden>
+        <p id="no-results-text"></p>
+        <p class="hint" data-i18n="noResultsHint"></p>
+      </div>
+    </div>
+  </main>
+
+  <dialog class="sheet" id="settings" aria-labelledby="settings-title">
+    <form method="dialog" id="settings-form">
+      <header class="sheet-head">
+        <h2 id="settings-title" data-i18n="settings"></h2>
+        <button class="icon-btn" value="close" data-i18n-label="close">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+
+      <fieldset>
+        <legend data-i18n="setAppearance"></legend>
+        <div class="field">
+          <span data-i18n="setTheme"></span>
+          <div class="seg">
+            <label><input type="radio" name="theme" value="system"><span data-i18n="themeSystem"></span></label>
+            <label><input type="radio" name="theme" value="light"><span data-i18n="themeLight"></span></label>
+            <label><input type="radio" name="theme" value="dark"><span data-i18n="themeDark"></span></label>
+          </div>
+        </div>
+        <div class="field">
+          <span data-i18n="setDensity"></span>
+          <div class="seg">
+            <label><input type="radio" name="density" value="comfortable"><span data-i18n="densityComfortable"></span></label>
+            <label><input type="radio" name="density" value="compact"><span data-i18n="densityCompact"></span></label>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="setSections"></legend>
+        <label class="field">
+          <span data-i18n="setShowTopSites"></span>
+          <input class="switch" type="checkbox" name="showTopSites">
+        </label>
+        <label class="field">
+          <span data-i18n="setTopSitesLimit"></span>
+          <select name="topSitesLimit">
+            <option>4</option><option>6</option><option>8</option><option>10</option>
+            <option>12</option><option>16</option><option>20</option>
+          </select>
+        </label>
+        <label class="field">
+          <span data-i18n="setShowBookmarks"></span>
+          <input class="switch" type="checkbox" name="showBookmarks">
+        </label>
+        <label class="field">
+          <span data-i18n="setIncludeOther"></span>
+          <input class="switch" type="checkbox" name="includeOtherRoots">
+        </label>
+        <label class="field">
+          <span data-i18n="setBookmarkOrder"></span>
+          <select name="bookmarkOrder">
+            <option value="browser" data-i18n="orderBrowser"></option>
+            <option value="usage" data-i18n="orderUsage"></option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend data-i18n="setData"></legend>
+        <div class="actions">
+          <button class="btn" type="button" id="restore-hidden"></button>
+          <button class="btn" type="button" id="clear-stats" data-i18n="clearStats"></button>
+        </div>
+        <div class="callout">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+          <div>
+            <strong class="callout-title" data-i18n="privacyTitle"></strong>
+            <p data-i18n="privacyNote"></p>
+          </div>
+        </div>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <svg class="ico ico-info" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+    <svg class="ico ico-success" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>
+    <span id="toast-text"></span>
+    <button type="button" id="toast-action" hidden></button>
+  </div>
+</body>
+</html>

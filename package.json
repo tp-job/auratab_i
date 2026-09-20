@@ -1,0 +1,16 @@
+{
+  "name": "atelier-launchpad",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Atelier Launchpad: a click-to-open launchpad of your most-used sites, bookmarks and search for Chrome and Edge.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "release": "npm test && npm run build",
+    "bump": "node scripts/bump.mjs"
+  }
+}

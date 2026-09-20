@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Launchpad</title>
+  <!-- Sets data-resolved-theme before first paint (MV3 forbids inline scripts). -->
+  <script src="js/theme.js"></script>
+  <link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/launchpad.css">
+  <!-- Fetch the whole module graph in parallel instead of import by import. -->
+  <link rel="modulepreload" href="js/launchpad.js">
+  <link rel="modulepreload" href="js/model.js">
+  <link rel="modulepreload" href="js/i18n.js">
+  <link rel="modulepreload" href="js/api.js">
+  <link rel="modulepreload" href="js/dom.js">
+</head>
+<body>
+  <!-- Backdrop: static radial placeholder, the ether canvas over it, then the
+       same top/bottom glass fade the portfolio Header uses, then grain. -->
+  <div class="backdrop" aria-hidden="true">
+    <canvas id="ether"></canvas>
+    <div class="veil"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="topbar">
+    <span class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="brand-name">Launchpad</span>
+      <span class="brand-jp" lang="ja" aria-hidden="true">ランチパッド</span>
+    </span>
+    <!-- Icon and label are painted by launchpad.js from the saved preference. -->
+    <button id="theme" class="icon-btn" type="button" aria-label="Theme" title="Theme"></button>
+  </header>
+
+  <main class="shell">
+    <!-- Shown only while the toolbar icon is not pinned: the icon is the one
+         way into the launchpad, so it has to stay visible. -->
+    <aside id="pin-hint" class="pin-hint" role="status" hidden>
+      <span class="pin-glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/></svg>
+      </span>
+      <span class="pin-text">
+        <strong data-i18n="pinTitle"></strong>
+        <span data-i18n="pinBody"></span>
+      </span>
+      <button id="pin-dismiss" class="pin-dismiss" type="button" data-i18n="pinDismiss"></button>
+    </aside>
+
+    <header class="hero">
+      <span class="eyebrow reveal d-0" id="eyebrow"></span>
+      <h1 class="clock reveal d-1" id="clock"></h1>
+      <p class="hero-sub reveal d-2"><span lang="ja" class="jp" id="greeting-jp"></span><span class="dot" aria-hidden="true">·</span><span id="greeting"></span></p>
+      <span class="rule reveal d-3" aria-hidden="true"></span>
+    </header>
+
+    <section class="search reveal d-4" role="search">
+      <div class="search-field">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" type="text" autocomplete="off" spellcheck="false"
+          data-i18n-placeholder="searchPlaceholder" data-i18n-label="searchLabel"
+          enterkeyhint="go" aria-keyshortcuts="/"
+          role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list">
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
+      </div>
+      <div id="results" class="results" role="listbox" data-i18n-label="resultsLabel" hidden></div>
+      <p id="results-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+    </section>
+
+    <section class="section" aria-labelledby="h-top">
+      <div class="section-head">
+        <h2 id="h-top"><span class="num" aria-hidden="true">02</span><span data-i18n="mostUsed"></span></h2>
+        <p class="meta" id="meta"></p>
+      </div>
+      <div id="bento" class="bento"></div>
+      <p id="empty" class="empty" data-i18n="emptySites" hidden></p>
+    </section>
+
+    <section class="section" id="dock-section" aria-labelledby="h-dock">
+      <div class="section-head">
+        <h2 id="h-dock"><span class="num" aria-hidden="true">03</span><span data-i18n="everyday"></span></h2>
+      </div>
+      <ol id="dock" class="dock"></ol>
+    </section>
+
+    <section class="section" id="bookmarks-section" aria-labelledby="h-bookmarks">
+      <div class="section-head">
+        <h2 id="h-bookmarks"><span class="num" aria-hidden="true">04</span><span data-i18n="bookmarks"></span></h2>
+        <p class="meta" id="bookmarks-meta"></p>
+      </div>
+      <div id="folders" class="folders"></div>
+      <p id="bookmarks-empty" class="empty" data-i18n="emptyBookmarks" hidden></p>
+    </section>
+
+    <footer class="foot">
+      <span><kbd>/</kbd> <span data-i18n="keySearch"></span></span>
+      <span><kbd>↑</kbd><kbd>↓</kbd> <span data-i18n="keyMove"></span></span>
+      <span><kbd>↵</kbd> <span data-i18n="keyOpen"></span></span>
+      <span><kbd>Ctrl</kbd><kbd>↵</kbd> <span data-i18n="keyBackground"></span></span>
+      <span><kbd>Alt</kbd><kbd>1–9</kbd> <span data-i18n="keyJump"></span></span>
+      <span><kbd>Alt</kbd><kbd>⇧</kbd><kbd>L</kbd> <span data-i18n="keyToggle"></span></span>
+      <button id="reset" class="linkish" type="button" hidden></button>
+    </footer>
+  </main>
+
+  <script src="js/ether.js" defer></script>
+  <script type="module" src="js/launchpad.js"></script>
+</body>
+</html>
