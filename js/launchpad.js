@@ -7,16 +7,19 @@
  */
 
 import {
-  HISTORY_DAYS, agoParts, buildGroups, composeTiles, greetingKey, hostKey, looksLikeUrl,
-  parseWeb, rankSites, recentPages, sanitizePrefs, siteMatches, toUrl,
+  CATEGORY_IDS, HISTORY_DAYS, agoParts, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
+  folderCategory, greetingKey, hostKey, looksLikeUrl, parseWeb, rankSites, recentPages,
+  sanitizePrefs, siteMatches, toUrl,
 } from './model.js';
 import { loadMessages, localize, t, uiLanguage } from './i18n.js';
 import { api, isExtension } from './api.js';
 import { el, readLocal, svg, whenIdle, writeLocal } from './dom.js';
+import { clearWeatherCache, currentPosition, loadWeather, searchPlaces } from './weather.js';
 
 const BENTO_SMALL = 8;   // cards around the #1 feature card
-const DOCK_COUNT = 12;
-const RECENT_COUNT = 6;
+const DOCK_COUNT = 12;   // Everyday: how many sites a tab shows
+const RECENT_COUNT = 20; // "Pick up where you left off" keeps 20 …
+const RECENT_PREVIEW = 6; // … and shows 6 until you ask for the rest
 const FOLDER_PREVIEW = 6;
 const STALE_AFTER = 30_000;
 const SEARCH_DEBOUNCE = 60;
@@ -24,6 +27,11 @@ const SNAPSHOT_HISTORY = 1500;
 const CACHE_KEY = 'launchpad:snapshot:v2';
 const EXPANDED_KEY = 'launchpad:expanded-folders';
 const PIN_HINT_KEY = 'launchpad:pin-hint-dismissed';
+const FILTER_KEY = 'launchpad:site-filter';
+const DOCK_TAB_KEY = 'launchpad:dock-tab';
+const BOOKMARK_FILTER_KEY = 'launchpad:bookmark-filter';
+const RECENT_OPEN_KEY = 'launchpad:recent-open';
+const WX_UNIT_KEY = 'launchpad:weather-unit';
 
 const $ = (id) => document.getElementById(id);
 const dom = {
@@ -36,6 +44,11 @@ const dom = {
   theme: $('theme'),
   pinHint: $('pin-hint'),
   reset: $('reset'),
+  siteChips: $('site-chips'),
+  dockTabs: $('dock-tabs'),
+  bookmarkChips: $('bookmark-chips'),
+  wx: $('wx'),
+  wxPanel: $('wx-panel'),
 };
 
 const state = {
@@ -52,6 +65,12 @@ const state = {
   queryToken: 0,
   loadedAt: 0,
   expanded: new Set(readLocal(EXPANDED_KEY, [])),
+  filter: readLocal(FILTER_KEY, 'all'),          // Most used — category chip
+  dockTab: readLocal(DOCK_TAB_KEY, 'all'),       // Everyday — sub-tab
+  bookmarkFilter: readLocal(BOOKMARK_FILTER_KEY, 'all'),
+  recentOpen: readLocal(RECENT_OPEN_KEY, false),
+  weather: null,
+  weatherError: '',
 };
 
 /* ---------------------------------------------------------------- formatting */
@@ -70,6 +89,41 @@ function ago(ts) {
 const pad2 = (n) => String(n).padStart(2, '0');
 const share = (site, max) => (max ? Math.max(4, Math.round((site.score / max) * 100)) : 0);
 const siteTitle = (site) => `${site.name} — ${site.host}${site.visits ? ` · ${t('visits', fmt.format(site.visits))}` : ''}`;
+
+/* ---------------------------------------------------------------- categories */
+
+// "dev" → "catDev", so one message key per category id.
+const catKey = (id) => `cat${id[0].toUpperCase()}${id.slice(1)}`;
+const catName = (id) => t(catKey(id));
+const withCategory = (item) => ({ ...item, category: categoryOf(item.host, state.prefs.categories) });
+
+// One row of filter chips: "All" plus every category that actually has sites.
+// `kind` is read back by the delegated click handler.
+function chipRow(kind, counts, current, total, { tabs = false } = {}) {
+  const chip = (id, label, n) => el('button', {
+    class: 'chip', type: 'button', data: { chip: id, kind },
+    role: tabs ? 'tab' : null,
+    'aria-selected': tabs ? String(id === current) : null,
+    'aria-pressed': tabs ? null : String(id === current),
+    tabindex: tabs ? (id === current ? '0' : '-1') : null,
+  }, el('span', {}, label), el('span', { class: 'chip-n' }, fmt.format(n)));
+
+  return el('div', {
+    class: 'chips', role: tabs ? 'tablist' : 'group', 'aria-label': t(tabs ? 'tabsLabel' : 'filterLabel'),
+  }, chip('all', t('catAll'), total), ...counts.map((c) => chip(c.id, catName(c.id), c.count)));
+}
+
+// Fall back to "all" when the saved chip no longer has anything behind it.
+const validFilter = (want, counts) => (want === 'all' || counts.some((c) => c.id === want) ? want : 'all');
+
+// The menu behind a tile's tag button: move this host to another category.
+function categoryMenu(site) {
+  return el('div', { class: 'cat-menu', role: 'menu', 'aria-label': t('moveToCategory', site.name) },
+    ...CATEGORY_IDS.map((id) => el('button', {
+      class: 'cat-option', type: 'button', role: 'menuitemradio', data: { action: 'set-category', category: id },
+      'aria-checked': String(id === site.category),
+    }, catName(id))));
+}
 
 /* ---------------------------------------------------------------- icons */
 
@@ -116,6 +170,11 @@ function tileActions(site) {
       title: site.pinned ? t('unpinShort') : t('pinShort'),
     }, svg('pin')),
     el('button', {
+      class: 'act', type: 'button', data: { action: 'category' },
+      'aria-haspopup': 'true', 'aria-expanded': 'false',
+      'aria-label': t('moveToCategory', site.name), title: catName(site.category ?? 'other'),
+    }, svg('tag')),
+    el('button', {
       class: 'act', type: 'button', data: { action: 'hide' },
       'aria-label': t('hideSite', site.name), title: t('hideShort'),
     }, svg('hide')));
@@ -129,6 +188,7 @@ function featureCard(site) {
       el('div', { class: 'feature-top' },
         iconFor(site.url, site.name, site.host),
         el('span', { class: 'pill' }, site.pinned ? t('pinnedTag') : t('mostUsedTag'))),
+      el('span', { class: 'feature-cat' }, catName(site.category ?? 'other')),
       el('div', {},
         el('p', { class: 'feature-name' }, site.name),
         el('p', { class: 'feature-host' }, site.host)),
@@ -148,7 +208,7 @@ function siteCard(site, rank, max) {
         site.pinned ? el('span', { class: 'pinned-dot', role: 'img', 'aria-label': t('pinnedDot'), title: t('pinnedDot') }) : null),
       el('span', { class: 'bc-name' },
         el('span', { class: 'bc-title' }, site.name),
-        el('span', { class: 'bc-sub' }, site.host)),
+        el('span', { class: 'bc-sub' }, `${catName(site.category ?? 'other')} · ${site.host}`)),
       el('span', { class: 'meter' },
         el('span', { class: 'meter-track', 'aria-hidden': 'true' }, el('i', { vars: { '--w': `${share(site, max)}%` } })),
         el('span', {}, site.visits ? fmt.format(site.visits) : t('pinnedWord')))),
@@ -180,15 +240,39 @@ function statsCard(sites) {
       el('p', { class: 'bc-sub' }, t('topShare', top3))));
 }
 
+// Up to RECENT_COUNT pages are kept; only the first RECENT_PREVIEW show until
+// the reader asks for the rest. The choice is remembered per device.
 function recentCard(pages) {
+  const open = state.recentOpen;
+  const shown = open ? pages : pages.slice(0, RECENT_PREVIEW);
+  const hasMore = pages.length > RECENT_PREVIEW;
+
   return el('article', { class: 'bc bc--recent', 'aria-labelledby': 'recent-title', vars: { '--i': 2 + BENTO_SMALL } },
-    el('h3', { class: 'bc-eyebrow', id: 'recent-title' }, t('recentTitle')),
-    el('ul', { class: 'recent-list' }, ...pages.map((p) =>
+    el('h3', { class: 'bc-eyebrow', id: 'recent-title' },
+      el('span', {}, t('recentTitle')),
+      el('span', { class: 'bc-count' }, fmt.format(pages.length))),
+    el('ul', { class: 'recent-list', id: 'recent-list' }, ...shown.map((p) =>
       el('li', {}, el('a', { href: p.url, title: p.url },
         iconFor(p.url, p.title, p.host),
         el('span', { class: 'recent-text' },
           el('span', { class: 'recent-title' }, p.title),
-          el('span', { class: 'recent-sub' }, `${p.host} · ${ago(p.lastVisit)}`)))))));
+          el('span', { class: 'recent-sub' }, `${p.host} · ${ago(p.lastVisit)}`)))))),
+    hasMore ? el('button', {
+      class: 'linkish recent-more', type: 'button', data: { action: 'recent-more' },
+      'aria-expanded': String(open), 'aria-controls': 'recent-list',
+    }, open ? t('showLess') : t('showAll', fmt.format(pages.length))) : null);
+}
+
+// Only the recent card is rebuilt, so the rest of the bento does not flicker.
+function toggleRecent() {
+  state.recentOpen = !state.recentOpen;
+  writeLocal(RECENT_OPEN_KEY, state.recentOpen);
+  const card = dom.bento.querySelector('.bc--recent');
+  if (!card) return renderSites();
+  const next = recentCard(state.recent);
+  next.classList.add('calm-card');
+  card.replaceWith(next);
+  next.querySelector('.recent-more')?.focus();
 }
 
 function dockItem(site, rank) {
@@ -203,34 +287,74 @@ function dockItem(site, rank) {
 // when history or the hidden list changes — not on every pin or re-render.
 function recomputeRanking() {
   const hidden = new Set(state.prefs.hidden);
-  state.sites = rankSites(state.history, state.topSites, hidden);
-  state.recent = recentPages(state.history, hidden, RECENT_COUNT);
+  state.sites = rankSites(state.history, state.topSites, hidden).map(withCategory);
+  state.recent = recentPages(state.history, hidden, RECENT_COUNT).map(withCategory);
+}
+
+// Categories are cheap to recompute but depend on the override map, so pins,
+// hides and ranking stay untouched when only a category moves.
+function recategorize() {
+  state.sites = state.sites.map(withCategory);
+  state.recent = state.recent.map(withCategory);
+  recomputeFolderCategories();
+}
+
+function recomputeFolderCategories() {
+  state.groups = state.groups.map((g) => ({ ...g, category: folderCategory(g.items, state.prefs.categories) }));
 }
 
 function renderSites() {
   const { sites, recent, prefs } = state;
-  const tiles = composeTiles(sites, prefs, 1 + BENTO_SMALL + DOCK_COUNT);
-  state.tiles = tiles;
-  const [feature, ...rest] = tiles;
+  const counts = categoryCounts(sites);
+  state.filter = validFilter(state.filter, counts);
+  dom.siteChips.replaceChildren(chipRow('filter', counts, state.filter, sites.length));
+  dom.siteChips.hidden = sites.length === 0;
+
+  // Filtering narrows the pool the bento is built from — pins included, so a
+  // pinned site does not jump into a drawer it does not belong to.
+  const pool = state.filter === 'all' ? sites : sites.filter((s) => s.category === state.filter);
+  const scoped = state.filter === 'all' ? prefs
+    : { ...prefs, pinned: prefs.pinned.filter((pin) => categoryOf(pin.host, prefs.categories) === state.filter) };
+  const bento = composeTiles(pool, scoped, 1 + BENTO_SMALL).map(withCategory);
+  const [feature, ...rest] = bento;
   const max = sites[0]?.score ?? 0; // sites are sorted best first
 
   dom.bento.replaceChildren(...(feature ? [
     featureCard(feature),
-    ...rest.slice(0, BENTO_SMALL).map((s, i) => siteCard(s, i + 1, max)),
+    ...rest.map((s, i) => siteCard(s, i + 1, max)),
     sites.length ? statsCard(sites) : null,
     recent.length ? recentCard(recent) : null,
   ] : []).filter(Boolean));
   dom.bento.hidden = !feature;
-  $('empty').hidden = Boolean(feature);
+  $('empty').hidden = Boolean(feature) || sites.length > 0;
+  $('filtered-empty').hidden = Boolean(feature) || sites.length === 0;
 
-  const dock = rest.slice(BENTO_SMALL);
-  dom.dock.replaceChildren(...dock.map((s, i) => dockItem(s, 1 + BENTO_SMALL + i)));
-  $('dock-section').hidden = dock.length === 0;
+  state.tiles = [...bento, ...renderDock(counts, bento)];
 
   $('meta').textContent = sites.length ? t('rankedMeta', timeFmt.format(new Date())) : '';
 
   dom.reset.hidden = prefs.hidden.length === 0;
   dom.reset.textContent = t('restoreHidden', prefs.hidden.length);
+}
+
+// Everyday. "All" carries on where the bento stopped; a category tab is a
+// drawer of its own — the top sites of that category, bento or not.
+function renderDock(counts, inBento) {
+  const { sites, prefs } = state;
+  state.dockTab = validFilter(state.dockTab, counts);
+  dom.dockTabs.replaceChildren(chipRow('dock', counts, state.dockTab, sites.length, { tabs: true }));
+
+  const taken = new Set(inBento.map((s) => s.host));
+  const pool = state.dockTab === 'all'
+    ? composeTiles(sites, prefs, 1 + BENTO_SMALL + DOCK_COUNT).filter((s) => !taken.has(s.host))
+    : sites.filter((s) => s.category === state.dockTab);
+  const dock = pool.slice(0, DOCK_COUNT).map(withCategory);
+
+  dom.dock.replaceChildren(...dock.map((s, i) => dockItem(s, 1 + BENTO_SMALL + i)));
+  dom.dock.hidden = dock.length === 0;
+  $('dock-empty').hidden = dock.length > 0;
+  $('dock-section').hidden = sites.length === 0;
+  return dock;
 }
 
 // Re-rendering replaces the tile a keyboard user was on. Put focus back on the
@@ -271,6 +395,7 @@ function folderCard(group, i) {
         el('h3', { class: 'folder-title', id: titleId }, group.title || '—'),
         path ? el('span', { class: 'folder-path' }, path) : null),
       el('span', { class: 'folder-count' }, fmt.format(group.items.length))),
+    el('span', { class: 'folder-cat' }, catName(group.category ?? 'other')),
     el('ul', { class: 'folder-list', id: listId }, ...items.map((item) => {
       const u = parseWeb(item.url);
       return el('li', {}, el('a', { href: item.url, title: item.url },
@@ -284,11 +409,17 @@ function folderCard(group, i) {
 
 function renderBookmarks() {
   const { groups } = state;
-  const links = groups.reduce((n, g) => n + g.items.length, 0);
-  dom.folders.replaceChildren(...groups.map(folderCard));
+  const counts = categoryCounts(groups);
+  state.bookmarkFilter = validFilter(state.bookmarkFilter, counts);
+  dom.bookmarkChips.replaceChildren(chipRow('bookmark', counts, state.bookmarkFilter, groups.length));
+  dom.bookmarkChips.hidden = groups.length === 0;
+
+  const shown = state.bookmarkFilter === 'all' ? groups : groups.filter((g) => g.category === state.bookmarkFilter);
+  const links = shown.reduce((n, g) => n + g.items.length, 0);
+  dom.folders.replaceChildren(...shown.map(folderCard));
   $('bookmarks-empty').hidden = groups.length > 0;
-  $('bookmarks-meta').textContent = groups.length
-    ? t('bookmarksMeta', fmt.format(links), fmt.format(groups.length))
+  $('bookmarks-meta').textContent = shown.length
+    ? t('bookmarksMeta', fmt.format(links), fmt.format(shown.length))
     : '';
 }
 
@@ -330,13 +461,109 @@ dom.folders.addEventListener('click', (e) => {
 function onTileAction(e) {
   const button = e.target instanceof Element ? e.target.closest('button[data-action]') : null;
   if (!button) return;
+  const { action } = button.dataset;
+  if (action === 'recent-more') return toggleRecent();
+
   const site = state.tiles.find((s) => s.host === button.closest('[data-host]')?.dataset.host);
   if (!site) return;
-  if (button.dataset.action === 'pin') togglePin(site);
+  if (action === 'pin') togglePin(site);
+  else if (action === 'category') openCategoryMenu(button, site);
   else hideSite(site);
 }
 dom.bento.addEventListener('click', onTileAction);
 dom.dock.addEventListener('click', onTileAction);
+
+/* ------------------------------------------------------------ category menu */
+
+// The menu lives on <body>: .bc and .dock clip their overflow, and a fixed
+// layer also keeps it on screen for the last tile in a row.
+let openMenu = null;
+
+function closeCategoryMenu({ restoreFocus = false } = {}) {
+  if (!openMenu) return;
+  const { button, menu } = openMenu;
+  openMenu = null;
+  button.setAttribute('aria-expanded', 'false');
+  menu.remove();
+  if (restoreFocus) button.focus();
+}
+
+function openCategoryMenu(button, site) {
+  const reopening = openMenu?.button === button;
+  closeCategoryMenu();
+  if (reopening) return;
+
+  const r = button.getBoundingClientRect();
+  const menu = categoryMenu(site);
+  menu.style.setProperty('--x', `${Math.round(r.right)}px`);
+  menu.style.setProperty('--y', `${Math.round(r.bottom + 6)}px`);
+  document.body.append(menu);
+  button.setAttribute('aria-expanded', 'true');
+  openMenu = { button, menu, host: site.host };
+  (menu.querySelector('[aria-checked="true"]') ?? menu.querySelector('button'))?.focus();
+}
+
+// A host whose rule already gives the chosen category drops its override, so
+// the list keeps only the corrections that actually say something.
+function setCategory(host, id) {
+  if (!CATEGORY_IDS.includes(id)) return;
+  const categories = { ...state.prefs.categories };
+  if (categorize(host) === id) delete categories[host];
+  else categories[host] = id;
+  updatePrefs({ ...state.prefs, categories }, { recat: true });
+}
+
+document.addEventListener('click', (e) => {
+  const option = e.target instanceof Element ? e.target.closest('[data-action="set-category"]') : null;
+  if (option && openMenu) {
+    const { host } = openMenu;
+    closeCategoryMenu();
+    return setCategory(host, option.dataset.category);
+  }
+  if (openMenu && e.target instanceof Node && !openMenu.menu.contains(e.target) && !openMenu.button.contains(e.target)) {
+    closeCategoryMenu();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && openMenu) {
+    e.preventDefault();
+    closeCategoryMenu({ restoreFocus: true });
+  }
+});
+window.addEventListener('resize', () => closeCategoryMenu(), { passive: true });
+
+/* ------------------------------------------------------------ category chips */
+
+function onChip(e) {
+  const chip = e.target instanceof Element ? e.target.closest('button[data-chip]') : null;
+  if (!chip) return;
+  const { kind, chip: id } = chip.dataset;
+  const key = { filter: FILTER_KEY, dock: DOCK_TAB_KEY, bookmark: BOOKMARK_FILTER_KEY }[kind];
+  const field = { filter: 'filter', dock: 'dockTab', bookmark: 'bookmarkFilter' }[kind];
+  if (!key || state[field] === id) return;
+  state[field] = id;
+  writeLocal(key, id);
+  if (kind === 'bookmark') renderBookmarks();
+  else renderSites();
+  // The row was rebuilt; put focus back on the chip that was just chosen.
+  document.querySelector(`[data-kind="${kind}"][data-chip="${id}"]`)?.focus();
+}
+dom.siteChips.addEventListener('click', onChip);
+dom.dockTabs.addEventListener('click', onChip);
+dom.bookmarkChips.addEventListener('click', onChip);
+
+// Everyday is a real tablist, so ←/→/Home/End move between its tabs.
+dom.dockTabs.addEventListener('keydown', (e) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1, Home: -Infinity, End: Infinity }[e.key];
+  if (step === undefined) return;
+  const tabs = [...dom.dockTabs.querySelectorAll('[role="tab"]')];
+  const from = tabs.indexOf(document.activeElement);
+  if (from < 0) return;
+  e.preventDefault();
+  const to = Number.isFinite(step) ? (from + step + tabs.length) % tabs.length : (step < 0 ? 0 : tabs.length - 1);
+  tabs[to].click();
+});
 
 // Cursor spotlight on bento cards: one delegated listener, at most one layout
 // read per frame, CSS does the rest.
@@ -357,18 +584,20 @@ dom.bento.addEventListener('pointermove', (e) => {
 
 /* ---------------------------------------------------------------- prefs */
 
-async function updatePrefs(prefs, { rerank = false } = {}) {
+async function updatePrefs(prefs, { rerank = false, recat = false } = {}) {
   state.prefs = prefs;
   if (rerank) recomputeRanking();
+  if (rerank || recat) recategorize();
   renderSitesKeepingFocus();
+  if (rerank || recat) renderBookmarks();
   scheduleSnapshot();
   await api.setPrefs(prefs).catch(() => {});
 }
 
 function togglePin(site) {
-  const { pinned, hidden } = state.prefs;
+  const { pinned } = state.prefs;
   updatePrefs({
-    hidden,
+    ...state.prefs,
     pinned: site.pinned
       ? pinned.filter((p) => p.host !== site.host)
       : [...pinned, { host: site.host, url: site.url, name: site.name }],
@@ -378,6 +607,7 @@ function togglePin(site) {
 function hideSite(site) {
   const { pinned, hidden } = state.prefs;
   updatePrefs({
+    ...state.prefs,
     pinned: pinned.filter((p) => p.host !== site.host),
     hidden: [...new Set([...hidden, site.host])],
   }, { rerank: true });
@@ -641,6 +871,202 @@ function tick() {
   clockTimer = setTimeout(tick, 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
 }
 
+/* ---------------------------------------------------------------- weather */
+
+// The only networked part of the page, and it stays asleep until a place is
+// chosen. See js/weather.js for what is (and is not) sent to Open-Meteo.
+
+const wxKey = (bucket) => `wx${bucket[0].toUpperCase()}${bucket.slice(1)}`;
+let wxPlaces = [];   // last geocoding results, indexed by the buttons' data-place
+let wxToken = 0;     // drops the answer to a search the reader has moved past
+
+function paintWeather() {
+  const place = state.prefs.weather;
+  const w = state.weather;
+  dom.wx.classList.toggle('is-set', Boolean(place && w));
+
+  if (!place) {
+    dom.wx.replaceChildren(svg('partly'), el('span', { class: 'wx-label' }, t('weatherAdd')));
+    dom.wx.setAttribute('aria-label', t('weatherAdd'));
+    dom.wx.title = t('weatherAdd');
+    return;
+  }
+
+  const where = place.name || t('weatherHere');
+  if (!w) {
+    const label = state.weatherError ? t('weatherUnavailable') : t('weatherLoading');
+    dom.wx.replaceChildren(svg('cloudy'), el('span', { class: 'wx-label' }, label));
+    dom.wx.setAttribute('aria-label', `${where} — ${label}`);
+    dom.wx.title = `${where} — ${label}`;
+    return;
+  }
+
+  const summary = t('weatherSummary', `${w.temp}°`, t(wxKey(w.bucket)), where);
+  dom.wx.replaceChildren(
+    svg(w.bucket),
+    el('span', { class: 'wx-temp' }, `${w.temp}°`),
+    el('span', { class: 'wx-label' }, where));
+  dom.wx.setAttribute('aria-label', summary);
+  dom.wx.title = `${summary} · ${t('wxFeels')} ${w.feels}°`;
+}
+
+async function refreshWeather(opts = {}) {
+  if (!state.prefs.weather) {
+    state.weather = null;
+    state.weatherError = '';
+    return paintWeather();
+  }
+  try {
+    state.weather = await loadWeather(state.prefs.weather, opts);
+    state.weatherError = '';
+  } catch (err) {
+    state.weatherError = String(err?.message ?? err);
+  }
+  paintWeather();
+  if (!dom.wxPanel.hidden) paintWxPanel();
+}
+
+/* the panel behind the pill */
+
+const wxStat = (label, value) => el('div', {}, el('dt', {}, label), el('dd', {}, value));
+
+function paintWxPanel() {
+  const place = state.prefs.weather;
+  const w = state.weather;
+  const unit = place?.unit === 'f' ? 'f' : 'c';
+
+  // replaceChildren() would turn a null child into the text "null", so the
+  // optional rows are filtered out before they get there.
+  dom.wxPanel.replaceChildren(...[
+    el('h2', { class: 'wx-title' }, t('weatherTitle')),
+    w ? el('dl', { class: 'wx-stats' },
+      wxStat(t('wxNow'), `${w.temp}° ${t(wxKey(w.bucket))}`),
+      wxStat(t('wxFeels'), `${w.feels}°`),
+      wxStat(t('wxHumidity'), `${w.humidity}%`),
+      wxStat(t('wxRange'), `${w.low}° / ${w.high}°`)) : null,
+    state.weatherError ? el('p', { class: 'wx-error', role: 'status' }, t('weatherUnavailable')) : null,
+
+    el('form', { class: 'wx-form', id: 'wx-form' },
+      el('input', {
+        class: 'wx-input', id: 'wx-city', type: 'text', autocomplete: 'off', spellcheck: 'false',
+        placeholder: t('weatherCityPlaceholder'), 'aria-label': t('weatherCityLabel'), enterkeyhint: 'search',
+      }),
+      el('button', { class: 'wx-go', type: 'submit' }, t('weatherSearch'))),
+    el('div', { class: 'wx-results', id: 'wx-results', role: 'status', 'aria-live': 'polite' }),
+
+    el('div', { class: 'wx-row' },
+      el('button', { class: 'wx-secondary', type: 'button', id: 'wx-locate' }, svg('locate'), el('span', {}, t('weatherUseLocation'))),
+      el('button', {
+        class: 'wx-secondary', type: 'button', id: 'wx-unit', 'aria-label': t('weatherUnit'),
+      }, el('span', {}, unit === 'f' ? '°F → °C' : '°C → °F')),
+      place ? el('button', { class: 'wx-secondary wx-off', type: 'button', id: 'wx-off' }, el('span', {}, t('weatherOff'))) : null),
+
+    el('p', { class: 'wx-note' }, t('weatherNote')),
+  ].filter(Boolean));
+}
+
+function toggleWxPanel(force) {
+  const show = force ?? dom.wxPanel.hidden;
+  dom.wxPanel.hidden = !show;
+  dom.wx.setAttribute('aria-expanded', String(show));
+  if (!show) return;
+  paintWxPanel();
+  refreshWeather();
+  $('wx-city')?.focus();
+}
+
+dom.wx.addEventListener('click', () => toggleWxPanel());
+
+async function setPlace(place) {
+  const unit = state.prefs.weather?.unit ?? readLocal(WX_UNIT_KEY, 'c');
+  clearWeatherCache();
+  state.weather = null;
+  state.weatherError = '';
+  paintWeather();
+  // Only the four fields the forecast needs are stored — the geocoder's extra
+  // columns (country, region, population …) are not kept.
+  await updatePrefs({ ...state.prefs, weather: { lat: place.lat, lon: place.lon, name: place.name ?? '', unit } });
+  await refreshWeather({ force: true });
+  toggleWxPanel(false);
+  dom.wx.focus();
+}
+
+function showWxMessage(key) {
+  $('wx-results')?.replaceChildren(el('p', { class: 'wx-hint' }, t(key)));
+}
+
+async function runPlaceSearch(query) {
+  const token = ++wxToken;
+  showWxMessage('weatherSearching');
+  try {
+    const places = await searchPlaces(query, lang);
+    if (token !== wxToken) return;
+    wxPlaces = places;
+    if (!places.length) return showWxMessage('weatherNoPlaces');
+    $('wx-results')?.replaceChildren(...places.map((place, i) => el('button', {
+      class: 'wx-place', type: 'button', data: { place: String(i) },
+    }, el('span', { class: 'wx-place-name' }, place.name), el('span', { class: 'wx-place-detail' }, place.detail))));
+  } catch {
+    if (token === wxToken) showWxMessage('weatherUnavailable');
+  }
+}
+
+dom.wxPanel.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const query = $('wx-city')?.value.trim() ?? '';
+  if (query.length >= 2) runPlaceSearch(query);
+});
+
+dom.wxPanel.addEventListener('click', async (e) => {
+  if (!(e.target instanceof Element)) return;
+
+  const chosen = e.target.closest('[data-place]');
+  if (chosen) return setPlace(wxPlaces[Number(chosen.dataset.place)]);
+
+  if (e.target.closest('#wx-locate')) {
+    showWxMessage('weatherLocating');
+    try {
+      return await setPlace(await currentPosition());
+    } catch {
+      return showWxMessage('weatherNoLocation');
+    }
+  }
+
+  if (e.target.closest('#wx-unit')) {
+    const place = state.prefs.weather ?? { lat: 0, lon: 0, name: '' };
+    const unit = place.unit === 'f' ? 'c' : 'f';
+    clearWeatherCache();
+    await updatePrefs({ ...state.prefs, weather: state.prefs.weather ? { ...place, unit } : null });
+    // Without a place there is nothing to convert yet; remember it for later.
+    if (!state.prefs.weather) writeLocal(WX_UNIT_KEY, unit);
+    await refreshWeather({ force: true });
+    return paintWxPanel();
+  }
+
+  if (e.target.closest('#wx-off')) {
+    clearWeatherCache();
+    await updatePrefs({ ...state.prefs, weather: null });
+    state.weather = null;
+    state.weatherError = '';
+    paintWeather();
+    toggleWxPanel(false);
+    dom.wx.focus();
+  }
+});
+
+// Same dismissal rules as the category menu: click away or press Escape.
+document.addEventListener('click', (e) => {
+  if (dom.wxPanel.hidden || !(e.target instanceof Node)) return;
+  if (!dom.wxPanel.contains(e.target) && !dom.wx.contains(e.target)) toggleWxPanel(false);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || dom.wxPanel.hidden) return;
+  e.preventDefault();
+  toggleWxPanel(false);
+  dom.wx.focus();
+});
+
 /* ---------------------------------------------------------------- theme */
 
 const THEME_ORDER = ['system', 'dark', 'light'];
@@ -708,6 +1134,7 @@ function restore() {
     prefs: sanitizePrefs(cached.prefs),
   });
   recomputeRanking();
+  recomputeFolderCategories();
   render();
   return true;
 }
@@ -725,6 +1152,7 @@ async function fetchLive() {
 function applyLive(live) {
   Object.assign(state, live, { loadedAt: Date.now() });
   recomputeRanking();
+  recomputeFolderCategories();
   render();
   scheduleSnapshot();
 }
@@ -734,6 +1162,7 @@ api.onBookmarksChanged(() => {
   clearTimeout(bookmarkTimer);
   bookmarkTimer = setTimeout(async () => {
     state.groups = buildGroups(await api.bookmarkTree().catch(() => []));
+    recomputeFolderCategories();
     renderBookmarks();
     scheduleSnapshot();
   }, 200);
@@ -743,11 +1172,16 @@ api.onBookmarksChanged(() => {
 // storage.onChanged also echoes this page's own writes; those are skipped.
 api.onPrefsChanged(async () => {
   const prefs = sanitizePrefs(await api.getPrefs().catch(() => ({})));
-  const sameHidden = JSON.stringify(prefs.hidden) === JSON.stringify(state.prefs.hidden);
-  if (sameHidden && JSON.stringify(prefs.pinned) === JSON.stringify(state.prefs.pinned)) return;
+  const same = (key) => JSON.stringify(prefs[key]) === JSON.stringify(state.prefs[key]);
+  const sameHidden = same('hidden');
+  if (sameHidden && same('pinned') && same('categories') && same('weather')) return;
+  const weatherMoved = !same('weather');
   state.prefs = prefs;
   if (!sameHidden) recomputeRanking();
+  recategorize();
   renderSitesKeepingFocus();
+  renderBookmarks();
+  if (weatherMoved) refreshWeather({ force: true });
 });
 
 // Coming back to the launchpad (toolbar icon, Alt+Shift+L, or tab switch):
@@ -756,6 +1190,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   tick();
   paintPinHint();
+  refreshWeather();
   if (dom.input.value) clearSearch();
   dom.input.focus({ preventScroll: true });
   if (Date.now() - state.loadedAt > STALE_AFTER) fetchLive().then(applyLive);
@@ -767,12 +1202,14 @@ async function boot() {
   tick();
   paintThemeButton();
   paintPinHint();
+  paintWeather();
 
   const live = fetchLive();
   const slow = await Promise.race([live.then(() => false), new Promise((r) => setTimeout(() => r(true), 150))]);
   if (slow && restore()) document.body.classList.add('calm');
 
   applyLive(await live);
+  refreshWeather();
   // Later re-renders (pin, hide, refresh) swap cards in place without replaying the entrance.
   setTimeout(() => document.body.classList.add('calm'), 1600);
   dom.input.focus({ preventScroll: true });

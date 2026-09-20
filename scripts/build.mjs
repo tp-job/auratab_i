@@ -57,7 +57,17 @@ if (manifest.action?.default_popup) fail('action.default_popup would stop action
 if (!manifest.commands?._execute_action) fail('commands._execute_action (the keyboard shortcut for the icon) is missing');
 const worker = manifest.background?.service_worker;
 if (!worker || !existsSync(join(ROOT, worker))) fail('background.service_worker file missing');
-if (!/connect-src 'none'/.test(manifest.content_security_policy?.extension_pages ?? '')) fail("CSP must keep connect-src 'none'");
+// The only network the page may reach is the weather API, and only over https.
+// Anything else in connect-src (or a host permission beyond these two) is a bug.
+const WEATHER_ORIGINS = ['https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com'];
+const csp = manifest.content_security_policy?.extension_pages ?? '';
+const connect = /connect-src ([^;]+)/.exec(csp)?.[1].trim().split(/\s+/) ?? [];
+if (connect.join(' ') !== WEATHER_ORIGINS.join(' ')) {
+  fail(`CSP connect-src must be exactly "${WEATHER_ORIGINS.join(' ')}" (got "${connect.join(' ') || 'nothing'}")`);
+}
+for (const host of manifest.host_permissions ?? []) {
+  if (!WEATHER_ORIGINS.some((o) => host === `${o}/*`)) fail(`host permission ${host} is not one of the weather origins`);
+}
 
 // Locales: default exists, all locales have identical keys, manifest __MSG_ keys resolve.
 const locales = readdirSync(join(ROOT, '_locales'));

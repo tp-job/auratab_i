@@ -28,13 +28,24 @@ A launchpad tab can sit in the background for a while, so each time you come bac
 | Frequently used sites are scattered across bookmarks, history and typed URLs | One page with your top sites and bookmark folders, plus one search box for your sites, bookmarks, history and the web |
 | Keeping favourites up to date by hand | No manual entry. Sites rank themselves from the last 90 days of history. Pin and hide are optional overrides. |
 | No visual hierarchy | A bento grid with #1 as the large feature card and ranks 02–09 around it, an Insight card, Recent pages, a dock for the next 12, then Bookmarks by folder |
-| Privacy | Everything is processed locally. The CSP sets `connect-src 'none'` and fonts are bundled, so the page makes no network requests. |
+| Everything in one undifferentiated pile | Sites, the dock and bookmark folders are sorted into categories (Dev, AI, Work, Social, Media, News, Learn, Shopping, Finance) from the host name alone; chips filter each section and any site can be moved by hand |
+| Privacy | Everything is processed locally and fonts are bundled. The only network call the CSP allows is the weather API, and only after you pick a place — see [PRIVACY.md](PRIVACY.md). |
 
 ## Sections
 
-- **02 Most used**: the bento grid. The #1 site is the velvet feature card. There are also usage-share insights and "Pick up where you left off".
-- **03 Everyday**: sites 10–21 in a dock with macOS-style magnification.
-- **04 Bookmarks**: every folder that holds links becomes a card, labelled with its folder path, in browser order. Each card shows 6 links with "Show all" (the expanded state is remembered per device). The section updates live when bookmarks change.
+- **Weather** (top right): off until you pick a city or share your location. Then the pill shows the current temperature; the panel adds feels-like, humidity and the day's low/high, and switches between °C and °F.
+- **02 Most used**: the bento grid. The #1 site is the velvet feature card. A row of category chips filters it. There are also usage-share insights and "Pick up where you left off", which keeps the last 20 pages and shows 6 until you expand it.
+- **03 Everyday**: a dock with macOS-style magnification, behind sub-tabs. **All** carries on where the bento stopped (sites 10–21); **Dev**, **AI**, **Work** and the rest are drawers of their own, showing the top 12 sites of that category.
+- **04 Bookmarks**: every folder that holds links becomes a card, labelled with its folder path and the category most of its links agree on, in browser order. Chips filter by category. Each card shows 6 links with "Show all" (the expanded state is remembered per device). The section updates live when bookmarks change.
+
+## Categories
+
+A site's category comes from its host alone, matched against a table of whole
+host segments in `js/model.js` — so `x.com` is Social but `sphinx.com` is not,
+and `localhost:5173`, `127.0.0.1:5500` and anything on a `.dev` address are Dev.
+Nothing is looked up online. The tag button on any tile moves that host to a
+different category; the override is stored with your pins (and drops itself
+again if you pick the category the rules would have given it anyway).
 
 ## Ranking
 

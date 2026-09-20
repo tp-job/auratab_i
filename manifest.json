@@ -30,8 +30,9 @@
       "description": "__MSG_commandDescription__"
     }
   },
-  "permissions": ["history", "topSites", "bookmarks", "favicon", "storage", "search"],
+  "permissions": ["history", "topSites", "bookmarks", "favicon", "storage", "search", "geolocation"],
+  "host_permissions": ["https://api.open-meteo.com/*", "https://geocoding-api.open-meteo.com/*"],
   "content_security_policy": {
-    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src https://api.open-meteo.com https://geocoding-api.open-meteo.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
   }
 }

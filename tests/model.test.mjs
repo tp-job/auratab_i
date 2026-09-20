@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DAY, agoParts, buildGroups, composeTiles, fuzzy, greetingKey, looksLikeUrl, rankSites,
-  recentPages, sanitizePrefs, siteMatches, siteName, toUrl,
+  CATEGORY_IDS, DAY, agoParts, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
+  folderCategory, fuzzy, greetingKey, looksLikeUrl, rankSites, recentPages, sanitizePrefs,
+  siteMatches, siteName, toUrl, wmoBucket,
 } from '../js/model.js';
 
 const NOW = Date.UTC(2026, 8, 19, 12);
@@ -62,8 +63,76 @@ test('recentPages: newest first, skips homepages, duplicates and hidden hosts', 
 });
 
 test('sanitizePrefs: tolerates junk from storage', () => {
-  assert.deepEqual(sanitizePrefs(undefined), { pinned: [], hidden: [] });
-  assert.deepEqual(sanitizePrefs({ pinned: [null, { host: 'a', url: 'u' }], hidden: ['a', 'a', 3] }), { pinned: [{ host: 'a', url: 'u' }], hidden: ['a'] });
+  assert.deepEqual(sanitizePrefs(undefined), { pinned: [], hidden: [], categories: {}, weather: null });
+  assert.deepEqual(
+    sanitizePrefs({ pinned: [null, { host: 'a', url: 'u' }], hidden: ['a', 'a', 3] }),
+    { pinned: [{ host: 'a', url: 'u' }], hidden: ['a'], categories: {}, weather: null });
+});
+
+test('sanitizePrefs: keeps known category overrides and a usable place', () => {
+  const prefs = sanitizePrefs({
+    categories: { 'a.com': 'dev', 'b.com': 'nonsense' },
+    weather: { lat: 18.787_51, lon: 98.993_17, name: 'Chiang Mai', unit: 'f' },
+  });
+  assert.deepEqual(prefs.categories, { 'a.com': 'dev' });
+  assert.deepEqual(prefs.weather, { lat: 18.79, lon: 98.99, name: 'Chiang Mai', unit: 'f' });
+});
+
+test('sanitizePrefs: drops a place that is not on the planet', () => {
+  assert.equal(sanitizePrefs({ weather: { lat: 91, lon: 0 } }).weather, null);
+  assert.equal(sanitizePrefs({ weather: { lat: 'north', lon: 0 } }).weather, null);
+  assert.equal(sanitizePrefs({ weather: { lat: 0, lon: 0 } }).weather.unit, 'c');
+});
+
+test('categorize: local dev servers and developer TLDs are dev', () => {
+  for (const host of ['localhost:5173', '127.0.0.1:5500', '192.168.1.4', 'api.myapp.local', 'reactbits.dev']) {
+    assert.equal(categorize(host), 'dev', host);
+  }
+});
+
+test('categorize: patterns match whole host segments only', () => {
+  assert.equal(categorize('x.com'), 'social');
+  assert.equal(categorize('sphinx.com'), 'other');
+  assert.equal(categorize('gist.github.com'), 'dev');
+  assert.equal(categorize('www.youtube.com'), 'media');
+  assert.equal(categorize('nevinas-p.onrender.com'), 'dev');
+  assert.equal(categorize('mail.google.com'), 'work');
+  assert.equal(categorize('translate.google.com'), 'learn');
+  assert.equal(categorize(''), 'other');
+});
+
+test('categoryOf: a manual override wins, junk does not', () => {
+  assert.equal(categoryOf('youtube.com', { 'youtube.com': 'work' }), 'work');
+  assert.equal(categoryOf('youtube.com', { 'youtube.com': 'nope' }), 'media');
+  assert.equal(categoryOf('youtube.com', undefined), 'media');
+});
+
+test('categoryCounts: CATEGORY_IDS order, empty drawers dropped', () => {
+  const counts = categoryCounts([{ category: 'media' }, { category: 'dev' }, { category: 'dev' }]);
+  assert.deepEqual(counts, [{ id: 'dev', count: 2 }, { id: 'media', count: 1 }]);
+  assert.ok(CATEGORY_IDS.indexOf('dev') < CATEGORY_IDS.indexOf('media'));
+});
+
+test('folderCategory: the folder follows the majority of its links', () => {
+  const items = [
+    { url: 'https://github.com/' },
+    { url: 'https://stackoverflow.com/q' },
+    { url: 'https://www.youtube.com/' },
+  ];
+  assert.equal(folderCategory(items), 'dev');
+  assert.equal(folderCategory(items, { 'github.com': 'media', 'stackoverflow.com': 'media' }), 'media');
+  assert.equal(folderCategory([]), 'other');
+});
+
+test('wmoBucket: every WMO code lands in a named bucket', () => {
+  assert.equal(wmoBucket(0), 'clear');
+  assert.equal(wmoBucket(2), 'partly');
+  assert.equal(wmoBucket(45), 'fog');
+  assert.equal(wmoBucket(55), 'drizzle');
+  assert.equal(wmoBucket(82), 'rain');
+  assert.equal(wmoBucket(73), 'snow');
+  assert.equal(wmoBucket(99), 'storm');
+  assert.equal(wmoBucket(undefined), 'cloudy');
 });
 
 test('search helpers: URL detection and fuzzy ranking', () => {

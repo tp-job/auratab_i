@@ -15,6 +15,7 @@
   <link rel="modulepreload" href="js/i18n.js">
   <link rel="modulepreload" href="js/api.js">
   <link rel="modulepreload" href="js/dom.js">
+  <link rel="modulepreload" href="js/weather.js">
 </head>
 <body>
   <!-- Backdrop: static radial placeholder, the ether canvas over it, then the
@@ -31,8 +32,15 @@
       <span class="brand-name">Launchpad</span>
       <span class="brand-jp" lang="ja" aria-hidden="true">ランチパッド</span>
     </span>
-    <!-- Icon and label are painted by launchpad.js from the saved preference. -->
-    <button id="theme" class="icon-btn" type="button" aria-label="Theme" title="Theme"></button>
+    <div class="topbar-end">
+      <!-- Weather stays empty until a place is chosen; launchpad.js paints both. -->
+      <div class="wx-wrap">
+        <button id="wx" class="wx" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="wx-panel"></button>
+        <div id="wx-panel" class="wx-panel" role="dialog" data-i18n-label="weatherTitle" hidden></div>
+      </div>
+      <!-- Icon and label are painted by launchpad.js from the saved preference. -->
+      <button id="theme" class="icon-btn" type="button" aria-label="Theme" title="Theme"></button>
+    </div>
   </header>
 
   <main class="shell">
@@ -74,15 +82,21 @@
         <h2 id="h-top"><span class="num" aria-hidden="true">02</span><span data-i18n="mostUsed"></span></h2>
         <p class="meta" id="meta"></p>
       </div>
+      <!-- Category chips: filled from the ranked sites, so only live drawers show. -->
+      <div id="site-chips" class="chips-row" hidden></div>
       <div id="bento" class="bento"></div>
       <p id="empty" class="empty" data-i18n="emptySites" hidden></p>
+      <p id="filtered-empty" class="empty" data-i18n="emptyCategory" hidden></p>
     </section>
 
     <section class="section" id="dock-section" aria-labelledby="h-dock">
       <div class="section-head">
         <h2 id="h-dock"><span class="num" aria-hidden="true">03</span><span data-i18n="everyday"></span></h2>
       </div>
+      <!-- Sub-tabs: All, Dev, and every other category with sites behind it. -->
+      <div id="dock-tabs" class="chips-row chips-row--center"></div>
       <ol id="dock" class="dock"></ol>
+      <p id="dock-empty" class="empty" data-i18n="emptyCategory" hidden></p>
     </section>
 
     <section class="section" id="bookmarks-section" aria-labelledby="h-bookmarks">
@@ -90,6 +104,7 @@
         <h2 id="h-bookmarks"><span class="num" aria-hidden="true">04</span><span data-i18n="bookmarks"></span></h2>
         <p class="meta" id="bookmarks-meta"></p>
       </div>
+      <div id="bookmark-chips" class="chips-row" hidden></div>
       <div id="folders" class="folders"></div>
       <p id="bookmarks-empty" class="empty" data-i18n="emptyBookmarks" hidden></p>
     </section>

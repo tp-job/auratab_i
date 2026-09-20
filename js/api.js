@@ -26,11 +26,11 @@ function createChromeApi() {
       u.searchParams.set('size', '64');
       return u.toString();
     },
-    getPrefs: () => chrome.storage.sync.get({ pinned: [], hidden: [] }),
+    getPrefs: () => chrome.storage.sync.get({ pinned: [], hidden: [], categories: {}, weather: null }),
     setPrefs: (prefs) => chrome.storage.sync.set(prefs),
     onPrefsChanged(fn) {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'sync' && (changes.pinned || changes.hidden)) fn();
+        if (area === 'sync' && (changes.pinned || changes.hidden || changes.categories || changes.weather)) fn();
       });
     },
     async isPinnedToToolbar() {
@@ -108,7 +108,7 @@ function createDemoApi() {
     searchHistory: async (text) => history.filter(matches(text)),
     searchBookmarks: async (text) => flat(tree).filter(matches(text)),
     favicon: () => null,
-    getPrefs: async () => readLocal('launchpad:demo-prefs', { pinned: [], hidden: [] }),
+    getPrefs: async () => readLocal('launchpad:demo-prefs', { pinned: [], hidden: [], categories: {}, weather: null }),
     setPrefs: async (v) => writeLocal('launchpad:demo-prefs', v),
     onPrefsChanged() {},
     isPinnedToToolbar: async () => false,
