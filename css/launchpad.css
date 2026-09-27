@@ -515,6 +515,7 @@ body.calm .folder { animation: none; }
 .wx-temp { font-size: 15px; font-variant-numeric: tabular-nums; }
 .wx-label { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
 .wx.is-set .wx-label { color: var(--text-muted); }
+.wx.is-stale .wx-temp, .wx.is-stale svg { opacity: 0.55; }
 
 .wx-panel {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;

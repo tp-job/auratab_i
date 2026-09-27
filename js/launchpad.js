@@ -14,7 +14,7 @@ import {
 import { loadMessages, localize, t, uiLanguage } from './i18n.js';
 import { api, isExtension } from './api.js';
 import { el, readLocal, svg, whenIdle, writeLocal } from './dom.js';
-import { clearWeatherCache, currentPosition, loadWeather, searchPlaces } from './weather.js';
+import { clearWeatherCache, currentPosition, lastReading, loadWeather, searchPlaces } from './weather.js';
 
 const BENTO_SMALL = 8;   // cards around the #1 feature card
 const DOCK_COUNT = 12;   // Everyday: how many sites a tab shows
@@ -883,7 +883,10 @@ let wxToken = 0;     // drops the answer to a search the reader has moved past
 function paintWeather() {
   const place = state.prefs.weather;
   const w = state.weather;
+  // A failed refresh keeps the last reading on screen, dimmed and labelled.
+  const stale = Boolean(place && w && state.weatherError);
   dom.wx.classList.toggle('is-set', Boolean(place && w));
+  dom.wx.classList.toggle('is-stale', stale);
 
   if (!place) {
     dom.wx.replaceChildren(svg('partly'), el('span', { class: 'wx-label' }, t('weatherAdd')));
@@ -901,7 +904,8 @@ function paintWeather() {
     return;
   }
 
-  const summary = t('weatherSummary', `${w.temp}°`, t(wxKey(w.bucket)), where);
+  const summary = t('weatherSummary', `${w.temp}°`, t(wxKey(w.bucket)), where)
+    + (stale ? `. ${t('weatherStale', ago(w.at))}` : '');
   dom.wx.replaceChildren(
     svg(w.bucket),
     el('span', { class: 'wx-temp' }, `${w.temp}°`),
@@ -921,6 +925,7 @@ async function refreshWeather(opts = {}) {
     state.weatherError = '';
   } catch (err) {
     state.weatherError = String(err?.message ?? err);
+    state.weather ??= lastReading(state.prefs.weather);
   }
   paintWeather();
   if (!dom.wxPanel.hidden) paintWxPanel();
@@ -943,8 +948,12 @@ function paintWxPanel() {
       wxStat(t('wxNow'), `${w.temp}° ${t(wxKey(w.bucket))}`),
       wxStat(t('wxFeels'), `${w.feels}°`),
       wxStat(t('wxHumidity'), `${w.humidity}%`),
-      wxStat(t('wxRange'), `${w.low}° / ${w.high}°`)) : null,
-    state.weatherError ? el('p', { class: 'wx-error', role: 'status' }, t('weatherUnavailable')) : null,
+      wxStat(t('wxRange'), `${w.low}° / ${w.high}°`),
+      w.rainChance == null ? null : wxStat(t('wxRainSoon'), `${w.rainChance}%`),
+      w.sunrise && w.sunset ? wxStat(t('wxSun'), `${w.sunrise} / ${w.sunset}`) : null) : null,
+    state.weatherError
+      ? el('p', { class: 'wx-error', role: 'status' }, w ? t('weatherStale', ago(w.at)) : t('weatherUnavailable'))
+      : w ? el('p', { class: 'wx-hint' }, t('weatherUpdated', ago(w.at))) : null,
 
     el('form', { class: 'wx-form', id: 'wx-form' },
       el('input', {
@@ -1036,6 +1045,7 @@ dom.wxPanel.addEventListener('click', async (e) => {
     const place = state.prefs.weather ?? { lat: 0, lon: 0, name: '' };
     const unit = place.unit === 'f' ? 'c' : 'f';
     clearWeatherCache();
+    state.weather = null; // a reading in the old unit must not survive a failed refetch
     await updatePrefs({ ...state.prefs, weather: state.prefs.weather ? { ...place, unit } : null });
     // Without a place there is nothing to convert yet; remember it for later.
     if (!state.prefs.weather) writeLocal(WX_UNIT_KEY, unit);

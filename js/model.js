@@ -319,6 +319,35 @@ export function wmoBucket(code) {
   return 'cloudy';
 }
 
+// Open-Meteo times are local to the place ("2026-09-27T06:07"), which is what a
+// sunrise should read in, so they are sliced rather than run through Date.
+const clockOf = (iso) => (typeof iso === 'string' && /T\d\d:\d\d/.test(iso) ? iso.slice(11, 16) : '');
+
+// One forecast response → the reading the page paints. `hourly` covers the next
+// few hours from now, so its highest precipitation chance is "rain soon".
+export function readingFrom(data, place, at) {
+  const now = data?.current ?? {};
+  const day = data?.daily ?? {};
+  const chances = (data?.hourly?.precipitation_probability ?? []).filter(Number.isFinite);
+  const reading = {
+    temp: Math.round(now.temperature_2m),
+    feels: Math.round(now.apparent_temperature),
+    humidity: Math.round(now.relative_humidity_2m),
+    high: Math.round(day.temperature_2m_max?.[0]),
+    low: Math.round(day.temperature_2m_min?.[0]),
+    rainChance: chances.length ? Math.max(...chances) : null,
+    sunrise: clockOf(day.sunrise?.[0]),
+    sunset: clockOf(day.sunset?.[0]),
+    bucket: wmoBucket(now.weather_code),
+    isDay: now.is_day !== 0,
+    unit: place.unit,
+    name: place.name,
+    at,
+  };
+  if (!Number.isFinite(reading.temp)) throw new Error('no reading');
+  return reading;
+}
+
 // Open-Meteo returns coordinates with more precision than a weather forecast
 // needs; two decimals (~1 km) is plenty and keeps less location data around.
 export const roundCoord = (n) => Math.round(Number(n) * 100) / 100;
