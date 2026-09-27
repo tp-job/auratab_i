@@ -392,6 +392,30 @@ a.bc:hover, .bc--site:hover { background: var(--glass-up); border-color: var(--g
 /* ─────────────────────────────── bookmarks ─────────────────────────────── */
 
 .folders { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); align-items: start; }
+
+/* Bookmark health: one glass card above the folders, closed by default. */
+#bm-health:empty { display: none; }
+.health {
+  border-radius: var(--radius); background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+.health > summary {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px;
+  position: relative; padding: 14px 44px 14px 20px; min-height: 48px; cursor: pointer; list-style: none; border-radius: var(--radius);
+}
+.health > summary::-webkit-details-marker { display: none; }
+.health > summary:hover { background: var(--well); }
+.health > summary::after { content: '▾'; position: absolute; right: 20px; top: 14px; color: var(--text-muted); transition: transform 200ms var(--ease); }
+.health[open] > summary::after { transform: rotate(180deg); }
+.health-title { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; }
+.health-stats { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-left: auto; font-size: 13px; color: var(--text-muted); }
+.health-stat b { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
+.health-body { display: grid; gap: 20px; padding: 4px 20px 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+.health-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.health-col li { min-width: 0; } /* grid items default to min-width: auto, which lets long titles spill into the next column */
+.health-quiet { font-size: 13px; color: var(--text-muted); }
+.health-note { padding: 0 20px 16px; font-size: 12px; }
+.health-ok { font-size: 13px; color: var(--text-muted); }
 .folder {
   display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; border-radius: var(--radius);
   background: var(--glass); border: 1px solid var(--glass-border); box-shadow: var(--glass-shadow);
@@ -590,7 +614,7 @@ body.calm .folder { animation: none; }
    surfaces real borders and make the gradient-clipped clock readable. */
 @media (forced-colors: active) {
   .bc, .folder, .dock, .search-field, .results, .pin-hint, .brand, .icon-btn, .act, kbd,
-  .chips, .cat-menu, .wx, .wx-panel, .wx-input, .wx-go, .wx-secondary { border: 1px solid CanvasText; }
+  .chips, .cat-menu, .wx, .wx-panel, .wx-input, .wx-go, .wx-secondary, .health { border: 1px solid CanvasText; }
   .chip[aria-pressed="true"], .chip[aria-selected="true"] { outline: 2px solid Highlight; }
   .clock { background: none; color: CanvasText; }
   .result[aria-selected="true"] { outline: 2px solid Highlight; }

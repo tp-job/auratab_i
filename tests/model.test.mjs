@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CATEGORY_IDS, DAY, agoParts, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
+  CATEGORY_IDS, DAY, agoParts, bookmarkHealth, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
   folderCategory, fuzzy, greetingKey, looksLikeUrl, rankSites, recentPages, sanitizePrefs,
   siteMatches, siteName, toUrl, wmoBucket,
 } from '../js/model.js';
@@ -186,4 +186,42 @@ test('greetingKey and agoParts', () => {
   assert.deepEqual(agoParts(NOW - 3 * 3_600_000, NOW), [-3, 'hour']);
   assert.deepEqual(agoParts(NOW - 2 * DAY, NOW), [-2, 'day']);
   assert.deepEqual(agoParts(NOW - 90 * DAY, NOW), [-3, 'month']);
+});
+
+test('bookmarkHealth: front pages count on any visit to the host, deep links need the page', () => {
+  const groups = [{ id: '1', path: ['Bar'], items: [
+    { title: 'GitHub', url: 'https://github.com/' },                 // host visited → used
+    { title: 'Repo', url: 'https://github.com/tp-job/repo#readme' },  // page visited (fragment ignored) → used
+    { title: 'Old docs', url: 'https://github.com/old/docs' },        // host visited, page not → unused
+    { title: 'Coolors', url: 'https://coolors.co/' },                 // never visited → unused
+    { title: 'Settings', url: 'chrome://settings/' },                 // not a web page → ignored
+  ] }];
+  const history = [h('https://www.github.com/tp-job/repo/', 'Repo', 3, 0, 2), h('https://github.com/x', 'X', 1, 0, 40)];
+  const health = bookmarkHealth(groups, history, []);
+  assert.deepEqual(health.unused.map((b) => b.title), ['Old docs', 'Coolors']);
+  assert.equal(health.since, NOW - 40 * DAY, 'the window is the oldest visit actually seen');
+});
+
+test('bookmarkHealth: duplicates list every folder, once per page', () => {
+  const groups = [
+    { id: '1', path: ['Bar'], items: [{ title: 'MDN', url: 'https://developer.mozilla.org/' }] },
+    { id: '2', path: ['Other', 'Docs'], items: [
+      { title: 'MDN again', url: 'https://www.developer.mozilla.org' },
+      { title: 'Solo', url: 'https://solo.dev/' },
+    ] },
+  ];
+  const { duplicates, unused } = bookmarkHealth(groups, [h('https://developer.mozilla.org/', 'MDN', 1, 0, 1)], []);
+  assert.equal(duplicates.length, 1);
+  assert.deepEqual(duplicates[0].paths, [['Bar'], ['Other', 'Docs']]);
+  assert.deepEqual(unused.map((b) => b.title), ['Solo'], 'a duplicate is not reported as unused twice');
+});
+
+test('bookmarkHealth: favourites without a bookmark, skipping dev servers; no history → nothing flagged', () => {
+  const sites = ['github.com', 'localhost:5173', 'claude.ai', 'youtube.com'].map((host) => ({ host }));
+  const groups = [{ id: '1', path: ['Bar'], items: [{ title: 'GitHub', url: 'https://github.com/' }] }];
+  const health = bookmarkHealth(groups, [h('https://github.com/', 'GitHub', 1, 0, 0)], sites, { limit: 1 });
+  assert.deepEqual(health.unbookmarked.map((s) => s.host), ['claude.ai']);
+  const empty = bookmarkHealth(groups, [], sites);
+  assert.deepEqual(empty.unused, []);
+  assert.equal(empty.since, null);
 });

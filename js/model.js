@@ -205,6 +205,69 @@ export function buildGroups(tree) {
   return groups;
 }
 
+/* ---------------------------------------------------------------- bookmark health */
+
+// One key per page: no www, no #fragment, no trailing slash. Web pages only.
+export function pageKey(url) {
+  const u = parseWeb(url);
+  return u ? `${hostKey(u)}${u.pathname.replace(/\/+$/, '')}${u.search}` : null;
+}
+
+// What needs tidying, from data the page already holds — read-only, nothing is
+// changed. `since` is the oldest visit in the history we were given: history is
+// capped, so a heavy browser's window can be shorter than HISTORY_DAYS, and the
+// page should say "since <date>" rather than claim a window it did not see.
+//
+//   unused       — web bookmarks with no visit in that window. A bookmark to a
+//                  site's front page counts as used if any page on the host was
+//                  visited; a deep link needs that page itself.
+//   duplicates   — the same page saved in more than one folder
+//   unbookmarked — the best-ranked sites with nothing bookmarked on their host
+export function bookmarkHealth(groups, history, sites, { top = 20, limit = 5 } = {}) {
+  const visitedPages = new Set();
+  const visitedHosts = new Set();
+  let since = Infinity;
+  for (const item of history ?? []) {
+    const u = parseWeb(item.url);
+    if (!u) continue;
+    visitedPages.add(pageKey(item.url));
+    visitedHosts.add(hostKey(u));
+    if (item.lastVisitTime) since = Math.min(since, item.lastVisitTime);
+  }
+  // No history (new profile, or the API failed) would flag every bookmark.
+  const haveHistory = visitedPages.size > 0;
+
+  const byPage = new Map();
+  const bookmarkedHosts = new Set();
+  const unused = [];
+  for (const group of groups ?? []) {
+    for (const item of group.items) {
+      const u = parseWeb(item.url);
+      if (!u) continue;
+      const host = hostKey(u);
+      const key = pageKey(item.url);
+      bookmarkedHosts.add(host);
+      const seen = byPage.get(key);
+      if (seen) { seen.paths.push(group.path); continue; }
+      byPage.set(key, { title: item.title, url: item.url, host, paths: [group.path] });
+      const frontPage = u.pathname === '/' && !u.search;
+      if (haveHistory && !visitedPages.has(key) && !(frontPage && visitedHosts.has(host))) {
+        unused.push({ title: item.title, url: item.url, host, path: group.path });
+      }
+    }
+  }
+
+  return {
+    unused,
+    duplicates: [...byPage.values()].filter((e) => e.paths.length > 1),
+    // Local dev servers come and go by port; bookmarking one is not a favour.
+    unbookmarked: (sites ?? []).slice(0, top)
+      .filter((s) => !bookmarkedHosts.has(s.host) && !LOCAL_HOST.test(s.host.split(':')[0]))
+      .slice(0, limit),
+    since: haveHistory && Number.isFinite(since) ? since : null,
+  };
+}
+
 /* ---------------------------------------------------------------- time */
 
 export function greetingKey(hour) {
