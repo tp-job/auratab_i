@@ -49,8 +49,10 @@ again if you pick the category the rules would have given it anyway).
 
 ## Ranking
 
-For each page in history:
+For each page visited in the last 90 days:
 `(visits + 3 × typed visits) × (0.3 + 0.7 × e^(−days since last visit / 21))`, summed per host, plus a small bonus from Chrome's Top Sites.
+
+The 90-day window decides *which* pages count. `visits` and `typed visits` are the browser's all-time counts for that page (`chrome.history` gives no per-window count without one `getVisits` call per URL), so a long-loved site keeps some weight after a quiet spell. The recency factor is what lets fresh favourites overtake it.
 
 ## Keys
 
