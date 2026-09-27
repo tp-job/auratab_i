@@ -37,6 +37,7 @@ A launchpad tab can sit in the background for a while, so each time you come bac
 - **02 Most used**: the bento grid. The #1 site is the velvet feature card. A row of category chips filters it. There are also usage-share insights and "Pick up where you left off", which keeps the last 20 pages and shows 6 until you expand it.
 - **03 Everyday**: a dock with macOS-style magnification, behind sub-tabs. **All** carries on where the bento stopped (sites 10–21); **Dev**, **AI**, **Work** and the rest are drawers of their own, showing the top 12 sites of that category.
 - **04 Bookmarks**: every folder that holds links becomes a card, labelled with its folder path and the category most of its links agree on, in browser order. Chips filter by category. Each card shows 6 links with "Show all" (the expanded state is remembered per device). The section updates live when bookmarks change.
+  **Bookmark health** sits above the folders, closed by default: bookmarks not opened in the history the page loaded (it says *since <date>*, which is shorter than 90 days if the 5000-row history cap was reached), pages saved in more than one folder, and top sites with no bookmark at all. A bookmark to a site's front page counts as opened if any page on that site was visited. It is read-only and never changes a bookmark.
 
 ## Categories
 
@@ -49,8 +50,10 @@ again if you pick the category the rules would have given it anyway).
 
 ## Ranking
 
-For each page in history:
+For each page visited in the last 90 days:
 `(visits + 3 × typed visits) × (0.3 + 0.7 × e^(−days since last visit / 21))`, summed per host, plus a small bonus from Chrome's Top Sites.
+
+The 90-day window decides *which* pages count. `visits` and `typed visits` are the browser's all-time counts for that page (`chrome.history` gives no per-window count without one `getVisits` call per URL), so a long-loved site keeps some weight after a quiet spell. The recency factor is what lets fresh favourites overtake it.
 
 ## Keys
 
@@ -122,5 +125,7 @@ legacy/               Archived AuraTab and the original launchpad prototype
 | `favicon` | Site icons from the browser's local favicon cache |
 | `storage` | Sync pins and hidden sites (`storage.sync`), and remember the tab to return to (`storage.session`) |
 | `search` | Send a web search to your default engine, only when you choose it |
+
+Weather needs no permission of its own. Open-Meteo allows cross-origin requests, so the CSP's `connect-src` is all it takes to reach it, and **Use my location** triggers the browser's normal location prompt instead of a permission granted at install. `npm run build` fails if `host_permissions` or `geolocation` is added back, because either one adds an install warning for a feature that is off by default, and adding one in an update disables the extension for existing users until they approve it.
 
 No `tabs` permission is needed. The icon toggle finds its own tab with `chrome.runtime.getContexts`.

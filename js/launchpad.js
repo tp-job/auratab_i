@@ -7,14 +7,14 @@
  */
 
 import {
-  CATEGORY_IDS, HISTORY_DAYS, agoParts, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
+  CATEGORY_IDS, HISTORY_DAYS, agoParts, bookmarkHealth, buildGroups, categorize, categoryCounts, categoryOf, composeTiles,
   folderCategory, greetingKey, hostKey, looksLikeUrl, parseWeb, rankSites, recentPages,
   sanitizePrefs, siteMatches, toUrl,
 } from './model.js';
 import { loadMessages, localize, t, uiLanguage } from './i18n.js';
 import { api, isExtension } from './api.js';
 import { el, readLocal, svg, whenIdle, writeLocal } from './dom.js';
-import { clearWeatherCache, currentPosition, loadWeather, searchPlaces } from './weather.js';
+import { clearWeatherCache, currentPosition, lastReading, loadWeather, searchPlaces } from './weather.js';
 
 const BENTO_SMALL = 8;   // cards around the #1 feature card
 const DOCK_COUNT = 12;   // Everyday: how many sites a tab shows
@@ -407,7 +407,76 @@ function folderCard(group, i) {
     }, open ? t('showLess') : t('showAll', fmt.format(group.items.length))) : null);
 }
 
+/* bookmark health — a native <details>, so it is keyboard- and reader-friendly for free */
+
+const HEALTH_PREVIEW = 8;
+const shortDate = new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short' });
+let healthMemo = { key: null, value: null };
+
+// history × bookmarks is thousands of URL parses; only redo it when an input changed.
+function currentHealth() {
+  const key = [state.groups, state.history, state.sites];
+  if (!healthMemo.key || key.some((v, i) => v !== healthMemo.key[i])) {
+    healthMemo = { key, value: bookmarkHealth(state.groups, state.history, state.sites) };
+  }
+  return healthMemo.value;
+}
+
+function healthLink(url, title, host, sub) {
+  return el('li', {}, el('a', { href: url, title: url },
+    iconFor(url, title, host),
+    el('span', { class: 'recent-text' },
+      el('span', { class: 'recent-title' }, title),
+      el('span', { class: 'recent-sub' }, sub))));
+}
+
+function healthColumn(head, rows) {
+  const shown = rows.slice(0, HEALTH_PREVIEW);
+  return el('section', { class: 'health-col' },
+    el('h4', { class: 'bc-eyebrow' }, head),
+    rows.length
+      ? el('ul', { class: 'recent-list' }, ...shown)
+      : el('p', { class: 'health-quiet' }, t('healthNone')),
+    rows.length > HEALTH_PREVIEW ? el('p', { class: 'health-quiet' }, t('healthMore', fmt.format(rows.length - HEALTH_PREVIEW))) : null);
+}
+
+const folderPath = (path) => path.filter(Boolean).join(' / ') || '—';
+
+function healthCard(wasOpen) {
+  const { unused, duplicates, unbookmarked, since } = currentHealth();
+  if (since == null) return null; // no history to judge by
+  const sinceText = shortDate.format(new Date(since));
+  if (!unused.length && !duplicates.length && !unbookmarked.length) {
+    return el('p', { class: 'health-ok' }, t('healthAllGood', sinceText));
+  }
+
+  const stat = (n, label) => el('span', { class: 'health-stat' }, el('b', {}, fmt.format(n)), ` ${label}`);
+  return el('details', { class: 'health', open: wasOpen },
+    el('summary', {},
+      el('span', { class: 'health-title' }, t('healthTitle')),
+      el('span', { class: 'health-stats' },
+        stat(unused.length, t('healthUnused')),
+        stat(duplicates.length, t('healthDupes')),
+        stat(unbookmarked.length, t('healthMissing')))),
+    el('div', { class: 'health-body' },
+      healthColumn(t('healthUnusedHead', sinceText),
+        unused.map((b) => healthLink(b.url, b.title, b.host, folderPath(b.path)))),
+      healthColumn(t('healthDupesHead'),
+        duplicates.map((d) => healthLink(d.url, d.title, d.host, d.paths.map(folderPath).join(' · ')))),
+      healthColumn(t('healthMissingHead'),
+        unbookmarked.map((s) => healthLink(s.url, s.name, s.host, s.visits ? `${s.host} · ${t('visits', fmt.format(s.visits))}` : s.host)))),
+    el('p', { class: 'health-quiet health-note' }, t('healthNote')));
+}
+
+function renderHealth() {
+  const box = $('bm-health');
+  const wasOpen = box.querySelector('details')?.open ?? false;
+  const card = healthCard(wasOpen);
+  box.replaceChildren(...(card ? [card] : []));
+}
+
 function renderBookmarks() {
+  renderHealth();
   const { groups } = state;
   const counts = categoryCounts(groups);
   state.bookmarkFilter = validFilter(state.bookmarkFilter, counts);
@@ -883,7 +952,10 @@ let wxToken = 0;     // drops the answer to a search the reader has moved past
 function paintWeather() {
   const place = state.prefs.weather;
   const w = state.weather;
+  // A failed refresh keeps the last reading on screen, dimmed and labelled.
+  const stale = Boolean(place && w && state.weatherError);
   dom.wx.classList.toggle('is-set', Boolean(place && w));
+  dom.wx.classList.toggle('is-stale', stale);
 
   if (!place) {
     dom.wx.replaceChildren(svg('partly'), el('span', { class: 'wx-label' }, t('weatherAdd')));
@@ -901,7 +973,8 @@ function paintWeather() {
     return;
   }
 
-  const summary = t('weatherSummary', `${w.temp}°`, t(wxKey(w.bucket)), where);
+  const summary = t('weatherSummary', `${w.temp}°`, t(wxKey(w.bucket)), where)
+    + (stale ? `. ${t('weatherStale', ago(w.at))}` : '');
   dom.wx.replaceChildren(
     svg(w.bucket),
     el('span', { class: 'wx-temp' }, `${w.temp}°`),
@@ -921,6 +994,7 @@ async function refreshWeather(opts = {}) {
     state.weatherError = '';
   } catch (err) {
     state.weatherError = String(err?.message ?? err);
+    state.weather ??= lastReading(state.prefs.weather);
   }
   paintWeather();
   if (!dom.wxPanel.hidden) paintWxPanel();
@@ -943,8 +1017,12 @@ function paintWxPanel() {
       wxStat(t('wxNow'), `${w.temp}° ${t(wxKey(w.bucket))}`),
       wxStat(t('wxFeels'), `${w.feels}°`),
       wxStat(t('wxHumidity'), `${w.humidity}%`),
-      wxStat(t('wxRange'), `${w.low}° / ${w.high}°`)) : null,
-    state.weatherError ? el('p', { class: 'wx-error', role: 'status' }, t('weatherUnavailable')) : null,
+      wxStat(t('wxRange'), `${w.low}° / ${w.high}°`),
+      w.rainChance == null ? null : wxStat(t('wxRainSoon'), `${w.rainChance}%`),
+      w.sunrise && w.sunset ? wxStat(t('wxSun'), `${w.sunrise} / ${w.sunset}`) : null) : null,
+    state.weatherError
+      ? el('p', { class: 'wx-error', role: 'status' }, w ? t('weatherStale', ago(w.at)) : t('weatherUnavailable'))
+      : w ? el('p', { class: 'wx-hint' }, t('weatherUpdated', ago(w.at))) : null,
 
     el('form', { class: 'wx-form', id: 'wx-form' },
       el('input', {
@@ -1036,6 +1114,7 @@ dom.wxPanel.addEventListener('click', async (e) => {
     const place = state.prefs.weather ?? { lat: 0, lon: 0, name: '' };
     const unit = place.unit === 'f' ? 'c' : 'f';
     clearWeatherCache();
+    state.weather = null; // a reading in the old unit must not survive a failed refetch
     await updatePrefs({ ...state.prefs, weather: state.prefs.weather ? { ...place, unit } : null });
     // Without a place there is nothing to convert yet; remember it for later.
     if (!state.prefs.weather) writeLocal(WX_UNIT_KEY, unit);

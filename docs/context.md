@@ -1,5 +1,9 @@
 Project AuraTab
 
+> **สถานะ (v2, Atelier Launchpad) / Status:** ข้อกำหนด "เปลี่ยนหน้า New Tab (chrome_url_overrides)" ด้านล่าง **ถูกยกเลิกแล้ว** — v2 เปิดเฉพาะเมื่อกดไอคอนบนแถบเครื่องมือหรือ Alt+Shift+L และ `npm run build` จะล้มเหลวหากตั้ง `chrome_url_overrides` ไว้ ส่วน Root Cause และข้อกำหนดอื่นยังใช้ได้
+>
+> The "replace the New Tab page" requirement below is **superseded**: v2 opens only from the toolbar icon or Alt+Shift+L, and the build rejects `chrome_url_overrides`. The root causes and every other requirement still stand. Current behaviour: [README](../README.md).
+
 Root Cause (สาเหตุรากเหง้า)
 
 ความซับซ้อนและกระจัดกระจายในการเข้าถึง (Fragmented & High-Click Access): เว็บไซต์หรือแอปพลิเคชันที่ใช้งานเป็นประจำถูกกระจัดกระจายอยู่ตามช่องทางต่างๆ (เช่น Bookmark Bar, History, หรือต้องพิมพ์ URL ใหม่ทุกครั้ง) ทำให้ผู้ใช้ต้องเสียเวลาและลดประสิทธิภาพการทำงาน (Context Switching Cost)

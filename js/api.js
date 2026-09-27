@@ -94,7 +94,7 @@ function createDemoApi() {
         b('33', 'three.js docs', 'https://threejs.org/docs/'),
       ] },
     ] },
-    { id: '2', title: 'Other bookmarks', children: [b('40', 'Pantip', 'https://pantip.com/'), b('41', 'r/webdev', 'https://www.reddit.com/r/webdev/')] },
+    { id: '2', title: 'Other bookmarks', children: [b('40', 'Pantip', 'https://pantip.com/'), b('41', 'r/webdev', 'https://www.reddit.com/r/webdev/'), b('42', 'MDN Web Docs', 'https://developer.mozilla.org/')] },
   ] }];
   const flat = (nodes) => nodes.flatMap((n) => (n.url ? [n] : flat(n.children ?? [])));
   const matches = (text) => (item) => `${item.title} ${item.url}`.toLowerCase().includes(text.toLowerCase());

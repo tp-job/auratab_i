@@ -1,6 +1,6 @@
 # Atelier Launchpad Privacy Policy
 
-_Last updated: 2026-09-20_
+_Last updated: 2026-09-27_
 
 Atelier Launchpad is a browser extension. When you click its toolbar icon, it opens a launchpad page with your most-used sites, your bookmarks and a search box. It does not replace the New Tab page.
 
@@ -14,7 +14,7 @@ Atelier Launchpad is a browser extension. When you click its toolbar icon, it op
 | Site icons (`favicon`) | Shows each site's icon from the browser's own local icon cache | Stays in your browser |
 | Pins and hidden sites (`storage`) | Remembers the sites you pin or hide | Saved in your browser's extension storage. If you use browser sync, your browser syncs them between your own devices. |
 | Search text (`search`) | When you choose "Search the web", your text goes to **your browser's default search engine**, just as if you typed it in the address bar | Handled by your browser and your chosen search engine, never by Atelier Launchpad |
-| Weather place (`storage`, `geolocation`, `host_permissions`) | **Off until you turn it on.** Once you pick a city — or ask the launchpad to use your location — it fetches the current conditions for that place | The place (rounded to ~1 km) is saved in extension storage like your pins. Fetching a forecast sends only those rounded coordinates to `open-meteo.com`, with no account, no cookies and no referrer. Nothing else about you is sent, and no other origin can be reached: the CSP allows those two hosts and nothing more. |
+| Weather place (`storage`) | **Off until you turn it on.** Once you pick a city — or press **Use my location**, which shows your browser's own location prompt — it fetches the current conditions for that place | The place (rounded to ~1 km) is saved in extension storage like your pins. Fetching a forecast sends only those rounded coordinates to `open-meteo.com`, with no account, no cookies and no referrer. Nothing else about you is sent, and no other origin can be reached: the CSP allows those two hosts and nothing more. |
 
 ## What Atelier Launchpad does not do
 
