@@ -123,4 +123,6 @@ legacy/               Archived AuraTab and the original launchpad prototype
 | `storage` | Sync pins and hidden sites (`storage.sync`), and remember the tab to return to (`storage.session`) |
 | `search` | Send a web search to your default engine, only when you choose it |
 
+Weather needs no permission of its own. Open-Meteo allows cross-origin requests, so the CSP's `connect-src` is all it takes to reach it, and **Use my location** triggers the browser's normal location prompt instead of a permission granted at install. `npm run build` fails if `host_permissions` or `geolocation` is added back, because either one adds an install warning for a feature that is off by default, and adding one in an update disables the extension for existing users until they approve it.
+
 No `tabs` permission is needed. The icon toggle finds its own tab with `chrome.runtime.getContexts`.

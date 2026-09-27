@@ -65,9 +65,13 @@ const connect = /connect-src ([^;]+)/.exec(csp)?.[1].trim().split(/\s+/) ?? [];
 if (connect.join(' ') !== WEATHER_ORIGINS.join(' ')) {
   fail(`CSP connect-src must be exactly "${WEATHER_ORIGINS.join(' ')}" (got "${connect.join(' ') || 'nothing'}")`);
 }
-for (const host of manifest.host_permissions ?? []) {
-  if (!WEATHER_ORIGINS.some((o) => host === `${o}/*`)) fail(`host permission ${host} is not one of the weather origins`);
-}
+// Weather is off by default, so it must not cost every user an install warning.
+// Open-Meteo answers CORS, so connect-src alone lets the page reach it; and an
+// extension page without the geolocation permission gets the ordinary browser
+// prompt when "Use my location" is pressed. Adding either later would also
+// disable the extension for existing users until they re-approve it.
+if (manifest.host_permissions?.length) fail(`host_permissions (${manifest.host_permissions.join(', ')}) add an install warning; CSP connect-src is enough`);
+if (manifest.permissions?.includes('geolocation')) fail('the geolocation permission adds an install warning for an opt-in feature; the browser prompts without it');
 
 // Locales: default exists, all locales have identical keys, manifest __MSG_ keys resolve.
 const locales = readdirSync(join(ROOT, '_locales'));
@@ -154,3 +158,8 @@ const unpacked = entries.reduce((sum, e) => sum + e.data.length, 0);
 console.log(`✔ Atelier Launchpad ${manifest.version} — ${entries.length} files, ${kb(unpacked)} unpacked`);
 console.log(`  Load unpacked : ${OUT_DIR}`);
 console.log(`  Store package : ${zipPath} (${kb(zip.length)})`);
+
+// Not a build failure (Load unpacked still works), but the store rejects it.
+if (readFileSync(join(ROOT, 'PRIVACY.md'), 'utf8').includes('<your support email>')) {
+  console.warn('⚠ PRIVACY.md still has the <your support email> placeholder — fill it in before submitting to a store');
+}

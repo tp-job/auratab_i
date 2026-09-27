@@ -1,6 +1,6 @@
 {
   "name": "atelier-launchpad",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Atelier Launchpad: a click-to-open launchpad of your most-used sites, bookmarks and search for Chrome and Edge.",
   "type": "module",
