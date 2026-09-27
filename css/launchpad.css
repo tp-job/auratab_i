@@ -176,6 +176,17 @@ kbd {
 .hero-sub .dot { color: var(--text-muted); }
 .rule { width: 32px; height: 1px; background: rgb(135 140 180 / 0.4); margin-top: 4px; }
 
+/* Short windows (a 13" laptop is ~650–720px tall inside the browser): the page
+   is opened to launch a site, so the tiles, not the clock, get the first screen.
+   The clock scales with height instead of width, and sections close up. */
+@media (max-height: 820px) and (min-width: 768px) {
+  .shell { gap: 28px; padding-top: 0; }
+  .hero { gap: 6px; }
+  .clock { font-size: clamp(3rem, 10vh, 8.5rem); }
+  .hero-sub { font-size: 15px; }
+  .rule { display: none; }
+}
+
 .reveal { animation: reveal 1s var(--ease) both; animation-delay: calc(var(--d, 0) * 1ms); }
 .d-1 { --d: 80; }
 .d-2 { --d: 180; }
