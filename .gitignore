@@ -2,3 +2,5 @@ dist/
 node_modules/
 *.pem
 *.crx
+.claude/*
+!.claude/launch.json
